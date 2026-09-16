@@ -67,8 +67,7 @@ nonisolated final class KitchenStateMachine: @unchecked Sendable {
             state = .active(continuation)
         }
         
-    
-        
+        /// Termination
         continuation.onTermination = { termination in
             logWarning("🤡 continuation .onTermination block")
             switch termination {
@@ -82,6 +81,7 @@ nonisolated final class KitchenStateMachine: @unchecked Sendable {
             }
         }
         
+        /// return stream
         return stream
     }
     
@@ -90,7 +90,6 @@ nonisolated final class KitchenStateMachine: @unchecked Sendable {
     /// Synchronously yields an item if the state is active
     func yieldOrder(_ order: KitchenOrder) {
         lock.lock()
-        
         defer { lock.unlock() }
         
         // ***** HERE, WE CHECK IF TASK IS ALREADY CACELLED
@@ -103,12 +102,10 @@ nonisolated final class KitchenStateMachine: @unchecked Sendable {
     /// Synchronously transitions to cancelled and instantly terminates the stream
     /// callled from **onCancel:** block of Task
     func cancelAndFinish() {
-        logWarning("   🧼 State Machine: cancelAndFinish() ")
+        logWarning("   🧼 State Machine: cancelAndFinish() - state: \(state)")
         lock.lock()
         
-        defer {
-            lock.unlock()
-        }
+        defer { lock.unlock() }
         
         if case .active(let continuation) = state {
             continuation.finish() // Triggers IMMEDIATELY on the current thread
@@ -154,8 +151,16 @@ class KitchenViewModel {
         // Generate the stream from our synchronized state machine
         let stream = stateMachine.createStream()
         
+        
+        
+        
         //MARK: - ******** TASK **************
         
+        /// wehn Task below gets cancelled,
+        /// The **.onTermination ** block triggers first because the for await loop is suspended waiting on the stream.
+        /// When you call Task.cancel(), the Swift concurrency runtime first notifies the active stream iterator,
+        /// invoking its internal cancellation mechanism and triggering .onTermination before the
+        /// outer ** onCancel block **  of your withTaskCancellationHandler can run
         processingTask = Task {
            await withTaskCancellationHandler {
                 log("👩‍🍳 Chef is Ready...")
@@ -171,10 +176,6 @@ class KitchenViewModel {
                 logWarning("👩‍🍳 Operation OVER. Closed")
                 //stateMachine.cancelAndFinish()
             } onCancel: {
-                //Task { @MainActor in
-                   // print("🧵 Processing Task onCancel")
-                //}
-                
                 logWarning("🧵 .onCancel block in Processing Task")
                 // This executes synchronously on the cancellation thread,
                 // stopping the stream instantly and guaranteeing order.
@@ -293,7 +294,8 @@ struct KitchenView: View {
 
 
 
-// MARK: - Models
+// MARK: - Model
+
 struct KitchenOrder: Sendable, Identifiable {
     let id: Int
     let dishName: String
