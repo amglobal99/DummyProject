@@ -12,6 +12,7 @@ struct DummyProjectApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+            //ParentView()
         }
     }
 }

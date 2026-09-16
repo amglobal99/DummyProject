@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Bucket
+   uuid = "904B898B-3B8E-406F-8A99-97A1282FC8FD"
+   type = "1"
+   version = "2.0">
+   <Breakpoints>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "483AD349-4AC2-4AFA-A8E2-8DEB8CD5B4D4"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "DummyProject/ContentView.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "43"
+            endingLineNumber = "43"
+            landmarkName = "body"
+            landmarkType = "24">
+            <Locations>
+               <Location
+                  uuid = "483AD349-4AC2-4AFA-A8E2-8DEB8CD5B4D4 - 91bbe9bb5625fd63"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(1) suspend resume partial function for closure #2 () async -&gt; () in DummyProject.ContentView.body.getter : some"
+                  moduleName = "DummyProject.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/amglobal/Downloads/Xcode_Projects/DummyProject/DummyProject/ContentView.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "43"
+                  endingLineNumber = "43">
+               </Location>
+               <Location
+                  uuid = "483AD349-4AC2-4AFA-A8E2-8DEB8CD5B4D4 - ef62bbe82b0baf18"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(2) await resume partial function for closure #2 () async -&gt; () in DummyProject.ContentView.body.getter : some"
+                  moduleName = "DummyProject.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/amglobal/Downloads/Xcode_Projects/DummyProject/DummyProject/ContentView.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "43"
+                  endingLineNumber = "43">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+   </Breakpoints>
+</Bucket>
