@@ -15,18 +15,20 @@ import Foundation
 import SwiftUI
 import Synchronization
 
-nonisolated func logWarning(_ message: String) {
-    let timestamp = Date().formatted(
-        Date.FormatStyle()
-            .hour()
-            .minute()
-            .second(.twoDigits)
-            .secondFraction(.fractional(4))
-    )
-    
-    print("[\(timestamp)] \(message)")
-}
 
+nonisolated func logWarning(_ message: String) {
+    let now = Date()
+    
+    // 1. Get the base time string (HH:mm:ss)
+    let baseTime = now.formatted(Date.FormatStyle().hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits))
+    
+    // 2. Extract microseconds from nanoseconds
+    let nanoseconds = Calendar.current.component(.nanosecond, from: now)
+    let microseconds = nanoseconds / 1000
+    
+    // 3. Print combined log
+    print("\(baseTime).\(String(format: "%06d", microseconds)) - \(message)")
+}
 
 
 
@@ -38,10 +40,21 @@ nonisolated func logWarning(_ message: String) {
 
 nonisolated final class KitchenStateMachine: Sendable {
     
-    private enum State {
+    private enum State: Equatable {
         case idle
         case active(AsyncStream<KitchenOrder>.Continuation)
         case cancelled
+        
+        var description: String {
+            switch self {
+            case .idle:
+                return "idle"
+            case .active(_):
+                return "active"
+            case .cancelled:
+                return "cancelled"
+            }
+        }
     }
     
     // Mutex explicitly wraps the mutable state it protects
@@ -71,12 +84,12 @@ nonisolated final class KitchenStateMachine: Sendable {
             logWarning("🤡 continuation .onTermination block")
             switch termination {
             case .finished:
-                logWarning("  ⚡️ .onTermination == .finished")
+                logWarning("  ⚡️ .onTermination continuation == .finished")
             case .cancelled:
-                logWarning("  ⚡️ .onTermination == .cancelled, cleaning up...")
+                logWarning("  ⚡️ .onTermination continuation == .cancelled, cleaning up...")
                 self?.cancelAndFinish()
             @unknown default:
-                logWarning("  ⚡️ Stream status: \(termination)")
+                logWarning("  ⚡️ Stream status: continuation == \(termination)")
                 break
             }
         }
@@ -100,7 +113,12 @@ nonisolated final class KitchenStateMachine: Sendable {
     func cancelAndFinish() {
         // Read state before lock only for logging, or shift log after to be data-race safe
         protectedState.withLock { state in
-            logWarning("   🧼 State Machine: cancelAndFinish() - CURRENT state: \(state)")
+            logWarning("   🧼 State Machine: cancelAndFinish() - CURRENT state: \(state.description)")
+            
+            guard state != .cancelled else {
+                logWarning("   🧼 State Machine: it is already .cancelled")
+                return
+            }
             
             if case .active(let continuation) = state {
                 continuation.finish() // Triggers IMMEDIATELY on the current thread
@@ -109,6 +127,9 @@ nonisolated final class KitchenStateMachine: Sendable {
             state = .cancelled
         }
     }
+    
+    
+    
     
     /// Reset back to idle to allow restarting the kitchen system
     func reset() {
@@ -169,9 +190,8 @@ class KitchenViewModel {
                  logWarning("👩‍🍳 Operation OVER. Closed")
                 
             } onCancel: {
-                logWarning("🧵 .onCancel block in Processing Task")
                 // This executes synchronously on the cancellation thread,stopping the stream instantly and guaranteeing order.
-                logWarning("👩‍🍳 .onCancel block - task still not cancelled. will cancel it here.")
+                logWarning("🧵 .onCancel block in Processing Task")
                 stateMachine.cancelAndFinish()
             }
              
@@ -193,7 +213,7 @@ class KitchenViewModel {
     
     func cancelSystem() {
         log("⏰ Closing time requested!")
-        logWarning("⏰ Close Kitchen Tapped - will call Task.cancel()")
+        logWarning("⏰ Close Kitchen Button Tapped - will call Task.cancel()")
         processingTask?.cancel()
         processingTask = nil
     }
