@@ -13,6 +13,7 @@
 ///   6.
 import Foundation
 import SwiftUI
+import Synchronization
 
 nonisolated func logWarning(_ message: String) {
     let timestamp = Date().formatted(
@@ -33,7 +34,9 @@ nonisolated func logWarning(_ message: String) {
 
 /// A state machine that handles states synchronously to preserve cancellation order.
 // 1. Explicitly marking the class nonisolated cuts it completely free from @MainActor tracking.
-nonisolated final class KitchenStateMachine: @unchecked Sendable {
+
+
+nonisolated final class KitchenStateMachine: Sendable {
     
     private enum State {
         case idle
@@ -41,40 +44,37 @@ nonisolated final class KitchenStateMachine: @unchecked Sendable {
         case cancelled
     }
     
-    private let lock = NSLock()
-    private var state: State = .idle
-    
+    // Mutex explicitly wraps the mutable state it protects
+    private let protectedState = Mutex<State>(.idle)
     
     /// Switches state to active and returns the associated stream
     func createStream() -> AsyncStream<KitchenOrder> {
-        lock.lock()
-        
-        defer {
-            lock.unlock()
-        }
-        
-        // If already cancelled or active, clean up old state first
-        if case .active(let oldContinuation) = state {
-            oldContinuation.finish()
-        }
-        
         let (stream, continuation) = AsyncStream.makeStream(of: KitchenOrder.self)
         
-        if case .cancelled = state {
-            // If the system was already cancelled before starting, terminate immediately
-            continuation.finish()
-        } else {
-            state = .active(continuation)
+        // Use withLock to safely access and modify the state
+        protectedState.withLock { state in
+            // If already cancelled or active, clean up old state first
+            if case .active(let oldContinuation) = state {
+                oldContinuation.finish()
+            }
+            
+            if case .cancelled = state {
+                // If the system was already cancelled before starting, terminate immediately
+                continuation.finish()
+            } else {
+                state = .active(continuation)
+            }
         }
         
         /// Termination
-        continuation.onTermination = { termination in
+        continuation.onTermination = { [weak self] termination in
             logWarning("🤡 continuation .onTermination block")
             switch termination {
             case .finished:
                 logWarning("  ⚡️ .onTermination == .finished")
             case .cancelled:
                 logWarning("  ⚡️ .onTermination == .cancelled, cleaning up...")
+                self?.cancelAndFinish()
             @unknown default:
                 logWarning("  ⚡️ Stream status: \(termination)")
                 break
@@ -84,44 +84,39 @@ nonisolated final class KitchenStateMachine: @unchecked Sendable {
         /// return stream
         return stream
     }
-    
-    
-    
-    /// Synchronously yields an item if the state is active
+
+
+/// Synchronously yields an item if the state is active
     func yieldOrder(_ order: KitchenOrder) {
-        lock.lock()
-        defer { lock.unlock() }
-        
-        // ***** HERE, WE CHECK IF TASK IS ALREADY CACELLED
-        if case .active(let continuation) = state {
-            continuation.yield(order)
+        protectedState.withLock { state in
+            if case .active(let continuation) = state {
+                continuation.yield(order)
+            }
         }
     }
-    
     
     /// Synchronously transitions to cancelled and instantly terminates the stream
-    /// callled from **onCancel:** block of Task
+    /// called from **onCancel:** block of Task
     func cancelAndFinish() {
-        logWarning("   🧼 State Machine: cancelAndFinish() - state: \(state)")
-        lock.lock()
-        
-        defer { lock.unlock() }
-        
-        if case .active(let continuation) = state {
-            continuation.finish() // Triggers IMMEDIATELY on the current thread
-            logWarning("   🧼 State Machine: continuation.finish() completed  synchronously.")
+        // Read state before lock only for logging, or shift log after to be data-race safe
+        protectedState.withLock { state in
+            logWarning("   🧼 State Machine: cancelAndFinish() - CURRENT state: \(state)")
+            
+            if case .active(let continuation) = state {
+                continuation.finish() // Triggers IMMEDIATELY on the current thread
+                logWarning("   🧼 State Machine: continuation.finish() completed synchronously.")
+            }
+            state = .cancelled
         }
-        state = .cancelled
     }
-    
-    
     
     /// Reset back to idle to allow restarting the kitchen system
     func reset() {
-        lock.lock()
-        defer { lock.unlock() }
-        state = .idle
+        protectedState.withLock { state in
+            state = .idle
+        }
     }
+
 }
 
 
@@ -140,8 +135,6 @@ class KitchenViewModel {
     
     //MARK: - Start System
     
-    
-    
     func startSystem()  {
         stateMachine.reset()
         
@@ -152,8 +145,7 @@ class KitchenViewModel {
         let stream = stateMachine.createStream()
         
         
-        
-        
+
         //MARK: - ******** TASK **************
         
         /// wehn Task below gets cancelled,
@@ -161,34 +153,34 @@ class KitchenViewModel {
         /// When you call Task.cancel(), the Swift concurrency runtime first notifies the active stream iterator,
         /// invoking its internal cancellation mechanism and triggering .onTermination before the
         /// outer ** onCancel block **  of your withTaskCancellationHandler can run
-        processingTask = Task {
-           await withTaskCancellationHandler {
-                log("👩‍🍳 Chef is Ready...")
+
+         processingTask = Task {
+            await withTaskCancellationHandler {
+                 log("👩‍🍳 Chef is Ready...")
+                 
+                 for await order in stream {
+                     if Task.isCancelled { break }
+                     
+                     log("🍳 Cooking Order #\(order.id): \(order.dishName)")
+                     try? await Task.sleep(for: .seconds(5))
+                     log("🍳 Completed: \(order.dishName)")
+                 }
+                 log("👩‍🍳 Operation OVER. Closed")
+                 logWarning("👩‍🍳 Operation OVER. Closed")
                 
-                for await order in stream {
-                    if Task.isCancelled { break }
-                    
-                    log("🍳 Cooking Order #\(order.id): \(order.dishName)")
-                    try? await Task.sleep(for: .seconds(5))
-                    log("🍳 Completed: \(order.dishName)")
-                }
-                log("👩‍🍳 Operation OVER. Closed")
-                logWarning("👩‍🍳 Operation OVER. Closed")
-                //stateMachine.cancelAndFinish()
             } onCancel: {
                 logWarning("🧵 .onCancel block in Processing Task")
-                // This executes synchronously on the cancellation thread,
-                // stopping the stream instantly and guaranteeing order.
+                // This executes synchronously on the cancellation thread,stopping the stream instantly and guaranteeing order.
+                logWarning("👩‍🍳 .onCancel block - task still not cancelled. will cancel it here.")
                 stateMachine.cancelAndFinish()
             }
-            
-        }
-        
-
+             
+         }
+         
         
         // Simulate immediate orders
         submitOrder(name: "Tacos")
-        //submitOrder(name: "Burgers")
+        submitOrder(name: "Burgers")
     } //func startMachine
     
 
@@ -273,19 +265,19 @@ struct KitchenView: View {
                                         .id(index)
                                 }
                             }
-                        }
+                        } // Scroll View
                         .onChange(of: viewModel.logs.count) { _, _ in
                             if let lastIndex = viewModel.logs.indices.last {
                                 proxy.scrollTo(lastIndex, anchor: .bottom)
                             }
                         }
-                    }
+                    } // ScrollViewReader
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(Color(.secondarySystemBackground))
+                .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
+            } // Vstack
             .padding()
             .navigationTitle("Order Streamer")
         }
