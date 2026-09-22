@@ -70,13 +70,14 @@ struct KitchenViewStream: View {
     
     
     func cancelPipeline(){
-        if let p = manager.pipelineTask {
-            print("Jack: ... will cancel pipeline from button")
-            p.cancel()
-        }else {
-            print("Jack: ... no task avail")
-        }
+//        if let p = manager.pipelineTask {
+//            print("Jack: ... will cancel pipeline from button")
+//            p.cancel()
+//        }else {
+//            print("Jack: ... no task avail")
+//        }
         
+        manager.pipelineTask?.cancel()
     }
     
     
@@ -93,6 +94,8 @@ struct KitchenViewStream: View {
 
 
 //MARK: - Restaurant Manager
+
+
 
 
 @Observable
@@ -121,6 +124,79 @@ final class RestaurantManager {
     
     //MARK: - Option 1 ... run taks concurrently
     
+    
+    private func startOrderPipeline() {
+            
+            /// 1. Create the async stream FIRST so that self.orderContinuation is populated!
+            let incomingStream = makeOrderStream()
+            
+            // 2. Capture the populated continuation locally right here.
+            let continuationToCancel = self.orderContinuation
+            
+            /// THIS IS THE OUTSIDE UNSTRUCTURED TASK
+            pipelineTask = Task {
+                await withTaskCancellationHandler {
+                    
+                    do {
+                        try await withThrowingTaskGroup(of: Void.self) { group in
+                            
+                            /// ** Task #1 **
+                            group.addTask {
+                                await withDiscardingTaskGroup { discardingGroup in
+                                    for await order in incomingStream {
+                                        let orderID = order.id
+                                        
+                                        await self.appendInitialOrderState(order)
+                                        
+                                        _ = discardingGroup.addTaskUnlessCancelled {
+                                            print("Jack: added task for order \(orderID)")
+                                            await self.processOrder(order)
+                                        }
+                                    } // for loop
+                                    
+                                } // discardingGroup ends
+                            } // group.addTask
+                            
+                            /// ** Task # 2 **
+                            group.addTask {
+                                try await Task.sleep(for: .seconds(8))
+                                print("Jack: ******* Sleep OVER ***********")
+                            }
+                            
+                            // Wait for Task 2 to wake up and finish first
+                            try await group.next()
+                            print("Jack: will cancel all groups tasks")
+                            
+                            // This sets the cancellation flag on Task 1 (the stream loop)
+                            group.cancelAll()
+                            
+                            // FIX: Explicitly finish the stream here.
+                            // This causes 'for await order in incomingStream' to break and exit gracefully.
+                            continuationToCancel?.finish()
+                        }
+                    } catch {
+                        print("Jack: Pipeline task group encountered an error: \(error)")
+                    }
+                    
+                } onCancel: {
+                    print("Jack: pipelineTask cancellation intercepted!")
+                    // If the entire pipelineTask is cancelled from the outside, finish the stream here too.
+                    continuationToCancel?.finish()
+                }
+            } // Task
+        } // end func
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    /*
     private func startOrderPipeline() {
         
         /// create the async stream
@@ -164,6 +240,7 @@ final class RestaurantManager {
                             print("Jack: ******* Sleep OVER ***********")
                         }
                         
+                        
                         try await group.next()
                         print("Jack: will cancel all groups tasks")
                         group.cancelAll()
@@ -171,7 +248,7 @@ final class RestaurantManager {
                         
                         // FIX: Manually finish the stream here to break the 'for await' loop
                         // when the group completes or cancels internally.
-                        continuationToCancel?.finish()
+                       // continuationToCancel?.finish()
                     }
                 } catch {
                     print("Jack: Pipeline task group encountered an error: \(error)")
@@ -191,6 +268,14 @@ final class RestaurantManager {
     } // end func
     
     
+    */
+    
+    
+    
+    
+    
+    
+    
     
     @MainActor
     private func clearContinuation() {
@@ -201,22 +286,22 @@ final class RestaurantManager {
     func makeOrderStream() -> AsyncStream<Order> {
         let (stream,continuation) = AsyncStream.makeStream(of: Order.self)
         self.orderContinuation = continuation
-        let taskToCancel = self.pipelineTask
+        //let taskToCancel = self.pipelineTask
         
         continuation.onTermination = { [weak self] termination in
             switch termination {
             case .cancelled:
                 print("Jack: .cancelled - The stream was cancelled by consumer.")
-                taskToCancel?.cancel()
+                //taskToCancel?.cancel()
             case .finished:
                 print("The order stream finished normally.")
             @unknown default:
                 break
             }
             
-            Task {
-                await self?.clearContinuation()
-            }
+//            Task {
+//                await self?.clearContinuation()
+//            }
         }
         
         return stream
@@ -378,6 +463,13 @@ final class RestaurantManager {
     
     
 } // end class RestaurantManager
+
+
+
+
+
+
+
 
 
 

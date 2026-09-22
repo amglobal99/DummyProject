@@ -44,6 +44,8 @@ nonisolated final class KitchenStateMachine: Sendable {
         case idle
         case active(AsyncStream<KitchenOrder>.Continuation)
         case cancelled
+        case finished
+        
         
         var description: String {
             switch self {
@@ -53,6 +55,8 @@ nonisolated final class KitchenStateMachine: Sendable {
                 return "active"
             case .cancelled:
                 return "cancelled"
+            case .finished:
+                return "finished"
             }
         }
     }
@@ -64,33 +68,15 @@ nonisolated final class KitchenStateMachine: Sendable {
     func createStream() -> AsyncStream<KitchenOrder> {
         let (stream, continuation) = AsyncStream.makeStream(of: KitchenOrder.self)
         
-        // Use withLock to safely access and modify the state
         protectedState.withLock { state in
-            // If already cancelled or active, clean up old state first
-            if case .active(let oldContinuation) = state {
-                oldContinuation.finish()
-            }
-            
-            if case .cancelled = state {
-                // If the system was already cancelled before starting, terminate immediately
-                continuation.finish()
-            } else {
-                state = .active(continuation)
-            }
+            state = .active(continuation)
         }
         
         /// Termination
-        continuation.onTermination = { [weak self] termination in
-            logWarning("🤡 continuation .onTermination block")
-            switch termination {
-            case .finished:
-                logWarning("  ⚡️ .onTermination continuation == .finished")
-            case .cancelled:
-                logWarning("  ⚡️ .onTermination continuation == .cancelled, cleaning up...")
-                self?.cancelAndFinish()
-            @unknown default:
-                logWarning("  ⚡️ Stream status: continuation == \(termination)")
-                break
+        continuation.onTermination = { terminationReason in
+            self.protectedState.withLock { state in
+                state = .finished
+                logWarning("   ⏰ .onTermination - Stream cleaned up natively")
             }
         }
         
@@ -110,25 +96,16 @@ nonisolated final class KitchenStateMachine: Sendable {
     
     /// Synchronously transitions to cancelled and instantly terminates the stream
     /// called from **onCancel:** block of Task
-    func cancelAndFinish() {
-        // Read state before lock only for logging, or shift log after to be data-race safe
+    func finishStream() {
         protectedState.withLock { state in
-            logWarning("   🧼 State Machine: cancelAndFinish() - CURRENT state: \(state.description)")
-            
-            guard state != .cancelled else {
-                logWarning("   🧼 State Machine: it is already .cancelled")
-                return
-            }
-            
+            logWarning("   🧼 finishStream() - current state == .\(state.description)")
             if case .active(let continuation) = state {
-                continuation.finish() // Triggers IMMEDIATELY on the current thread
-                logWarning("   🧼 State Machine: continuation.finish() completed synchronously.")
+                continuation.finish()
+                logWarning("   🧼 finishStream() - continuation finished synchronously.")
             }
-            state = .cancelled
+            state = .finished
         }
     }
-    
-    
     
     
     /// Reset back to idle to allow restarting the kitchen system
@@ -166,10 +143,12 @@ class KitchenViewModel {
         let stream = stateMachine.createStream()
         
         
+        
+        
 
         //MARK: - ******** TASK **************
         
-        /// wehn Task below gets cancelled,
+        /// when Task below gets cancelled,
         /// The **.onTermination ** block triggers first because the for await loop is suspended waiting on the stream.
         /// When you call Task.cancel(), the Swift concurrency runtime first notifies the active stream iterator,
         /// invoking its internal cancellation mechanism and triggering .onTermination before the
@@ -180,19 +159,18 @@ class KitchenViewModel {
                  log("👩‍🍳 Chef is Ready...")
                  
                  for await order in stream {
-                     if Task.isCancelled { break }
-                     
                      log("🍳 Cooking Order #\(order.id): \(order.dishName)")
                      try? await Task.sleep(for: .seconds(5))
                      log("🍳 Completed: \(order.dishName)")
                  }
-                 log("👩‍🍳 Operation OVER. Closed")
+                /// If stream ends normally, then this gets called, However, in our case, our kitchen is mOPEN until user taps CANCEL button. Flow would then go to .onCAncel block below.
+                /// stateMachine.finishStream()
+                 log("👩‍🍳 Stream OVER. Kitchen Closed")
                  logWarning("👩‍🍳 Operation OVER. Closed")
-                
             } onCancel: {
                 // This executes synchronously on the cancellation thread,stopping the stream instantly and guaranteeing order.
                 logWarning("🧵 .onCancel block in Processing Task")
-                stateMachine.cancelAndFinish()
+                stateMachine.finishStream()
             }
              
          }
@@ -211,6 +189,9 @@ class KitchenViewModel {
         stateMachine.yieldOrder(order)
     }
     
+    //MARK: - Cancel
+    
+    /// called when Close Kitchen button is tapped
     func cancelSystem() {
         log("⏰ Closing time requested!")
         logWarning("⏰ Close Kitchen Button Tapped - will call Task.cancel()")
