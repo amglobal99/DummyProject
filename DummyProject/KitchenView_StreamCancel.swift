@@ -276,7 +276,7 @@ struct KitchenView: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(Color(.systemGray6))
+                .background(.thickMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             } // Vstack
             .padding()
