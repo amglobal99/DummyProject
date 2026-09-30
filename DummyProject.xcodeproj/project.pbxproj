@@ -22,6 +22,7 @@
 
 /* Begin PBXFileReference section */
 		A6648735306C04EC00C27ACA /* DummyProjectTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DummyProjectTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A674F2DE306DA884000250D3 /* DummyProject.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = DummyProject.xctestplan; sourceTree = "<group>"; };
 		A67F78BE302B75F6001ECB63 /* DummyProject.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DummyProject.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -60,6 +61,7 @@
 		A67F78B5302B75F6001ECB63 = {
 			isa = PBXGroup;
 			children = (
+				A674F2DE306DA884000250D3 /* DummyProject.xctestplan */,
 				A67F78C0302B75F6001ECB63 /* DummyProject */,
 				A6648736306C04EC00C27ACA /* DummyProjectTests */,
 				A67F78BF302B75F6001ECB63 /* Products */,
@@ -224,7 +226,9 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -247,7 +251,9 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
