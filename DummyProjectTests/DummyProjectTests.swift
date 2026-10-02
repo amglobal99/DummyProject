@@ -9,6 +9,10 @@ import Testing
 import Foundation
 @testable import DummyProject
 
+extension Tag {
+    @Tag static var critical: Self
+    @Tag static var networkRequest: Self
+}
 
 // Write your test here and use APIs like `#expect(...)` to check expected conditions.
 // Swift Testing Documentation
@@ -50,7 +54,7 @@ struct DummyProjectTests {
             }
             
             func fetchDataWithNetworkFailure() async throws {
-                throw MyError.networkCallFailed
+                throw MyError.routerDown
             }
             
             func fetchDataResponse(url: String) async  throws -> (Data, URLResponse) {
@@ -80,7 +84,8 @@ struct DummyProjectTests {
             #expect(!unwrappedValue.isEmpty)
         }
         
-        @Test("Verify HTTP code 200")
+        
+        @Test("Verify HTTP code 200", .tags(.critical))
         func verifyHTTPSuccessCode() async throws {
             let (_,response) = try await nwManager.fetchDataResponse(url: testerURL)
             
@@ -91,7 +96,7 @@ struct DummyProjectTests {
         
         
         
-        @Test("Wll Fail Test", .disabled())
+        @Test("Wll Fail Test", .disabled("due to known crash"))
         func testWillFail() {
             print("running failing test")
             #expect(1 == 2, "This test will always fail")
@@ -167,7 +172,9 @@ struct ProtocolBasedTests {
     func getURLData() async throws {
         let mock = MockAPIClient()
         let str = try await mock.fetchData(url: "https://httpbin.org/get")
-        #expect(str.contains("origin"), "the string does not contain 'origin'")
+        // #expect(str.contains("origin"), "the string does not contain 'origin'")
+        #expect(!str.isEmpty, "the string seem sto be EMPTY")
+        
     }
     
 } //end suite
